@@ -1,4 +1,4 @@
-const VectorManager = require('./core/vector_manager.js');
+const DeploymentManager = require('./core/deployment_manager.js');
 
 module.exports = {
   DeploymentManager
