@@ -49,9 +49,6 @@ class DeploymentManager {
    * @private
    */
   __initialize__ (cfg) {
-    /**
-     * @private
-     */
     if (typeof cfg === 'string') {
       if (typeof cfg === 'string') {
         cfg = cfg.replaceAll('~', os.homedir());
