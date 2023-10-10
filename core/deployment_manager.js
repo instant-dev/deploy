@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const childProcess = require('child_process');
+const os = require('os');
 
 process.env.AWS_SDK_JS_SUPPRESS_MAINTENANCE_MODE_MESSAGE = '1';
 const AWS = require('aws-sdk');
@@ -14,12 +14,30 @@ class DeploymentManager {
 
   requiredKeys = {
     'AWS': [
-      'AWS_REGION',
-      'AWS_ACCESS_KEY',
-      'AWS_SECRET_ACCESS_KEY',
-      'AWS_EBS_S3_BUCKET',
-      'AWS_EBS_APPLICATION_NAME',
-      'AWS_EBS_ENVIRONMENT_NAME'
+      {
+        name: 'AWS_REGION',
+        description: 'AWS Region'
+      },
+      {
+        name: 'AWS_ACCESS_KEY',
+        description: 'IAM: AWS Access Key'
+      },
+      {
+        name: 'AWS_SECRET_ACCESS_KEY',
+        description: 'IAM: AWS Secret Access Key'
+      },
+      {
+        name: 'AWS_EBS_S3_BUCKET',
+        description: 'S3 Bucket name for deployments'
+      },
+      {
+        name: 'AWS_EBS_APPLICATION_NAME',
+        description: 'ElasticBeanstalk Application name'
+      },
+      {
+        name: 'AWS_EBS_ENVIRONMENT_NAME',
+        description: 'ElasticBeanstalk Environment name'
+      }
     ]
   };
 
@@ -34,6 +52,25 @@ class DeploymentManager {
     /**
      * @private
      */
+    if (typeof cfg === 'string') {
+      if (typeof cfg === 'string') {
+        cfg = cfg.replaceAll('~', os.homedir());
+      }
+      if (!fs.existsSync(cfg)) {
+        throw new Error(`Deployment configuration pathname "${cfg}" does not exist`);
+      } else if (fs.statSync(cfg).isDirectory()) {
+        throw new Error(`Deployment configuration pathname "${cfg}" must be a file`);
+      }
+      let file = fs.readFileSync(cfg);
+      let lines = file.toString().split('\n').map(v => v.trim()).filter(v => !!v);
+      cfg = lines.reduce((cfg, line) => {
+        let values = line.split('=');
+        let key = values[0];
+        let value = values.slice(1).join('=');
+        cfg[key] = value;
+        return cfg;
+      }, {});
+    }
     this.cfg = {};
     for (const key in cfg) {
       this.cfg[key] = cfg[key];
@@ -51,7 +88,8 @@ class DeploymentManager {
    * @private
    * @param {string[]} keys
    */
-  __requireKeys__ (keys) {
+  __requireKeys__ (requiredKeys) {
+    const keys = requiredKeys.map(keyData => keyData.name);
     for (const key of keys) {
       if (!this.cfg[key]) {
         throw new Error(`Requires "${key}" config to deploy`);
@@ -85,7 +123,22 @@ class DeploymentManager {
     return new AWS.ElasticBeanstalk(ebsCfg);
   }
 
-  async deployToEBS (pathname, devEnvironmentName = 'staging', logFn = null) {
+  readPackageFiles (pathname, ignorePathname) {
+    if (typeof pathname === 'string') {
+      pathname = pathname.replaceAll('~', os.homedir());
+    }
+    if (!pathname) {
+      throw new Error(`createPackage: pathname required`);
+    } else if (!fs.existsSync(pathname)) {
+      throw new Error(`createPackage: pathname "${pathname}" does not exist`);
+    } else if (!fs.statSync(pathname).isDirectory()) {
+      throw new Error(`createPackage: pathname "${pathname}" is not a directory`);
+    }
+    const files = zip.readdir(pathname, ignorePathname);
+    return files;
+  }
+
+  async deployToElasticBeanstalk (files, devEnvironmentName = 'staging', envVars = {}, logFn = null) {
 
     const start = new Date().valueOf();
 
@@ -104,34 +157,35 @@ class DeploymentManager {
       }
     };
 
-    if (!pathname) {
-      throw new Error(`deployToEBS: pathname required`);
-    } else if (!fs.existsSync(pathname)) {
-      throw new Error(`deployToEBS: pathname "${pathname}" does not exist`);
-    } else if (!fs.statSync(pathname).isDirectory()) {
-      throw new Error(`deployToEBS: pathname "${pathname}" is not a directory`);
+    if (!files) {
+      throw new Error(`deployToElasticBeanstalk: files required`);
+    } else if (!files['package.json']) {
+      throw new Error(`deployToElasticBeanstalk: files must have package.json`);
     } else if (
       !applicationName ||
       !applicationName.match(/[A-Z0-9\-]/gi) ||
       applicationName.match(/^\-|\-$/)
     ) {
-      throw new Error(`deployToEBS: AWS_EBS_APPLICATION_NAME must be alphanumeric and can contain "-" only`);
+      throw new Error(`deployToElasticBeanstalk: AWS_EBS_APPLICATION_NAME must be alphanumeric and can contain "-" only`);
     } else if (
       !environmentName ||
       !environmentName.match(/[A-Z0-9\-]/gi) ||
       environmentName.match(/^\-|\-$/)
     ) {
-      throw new Error(`deployToEBS: AWS_EBS_ENVIRONMENT_NAME must be alphanumeric and can contain "-" only`);
+      throw new Error(`deployToElasticBeanstalk: AWS_EBS_ENVIRONMENT_NAME must be alphanumeric and can contain "-" only`);
+    } else if (!envVars || typeof envVars !== 'object') { 
+      throw new Error(`deployToElasticBeanstalk: envVars must be object of key-value pairs`);
     } else if (typeof logFn !== 'function') {
-      throw new Error(`deployToEBS: logger must be a function`);
+      throw new Error(`deployToElasticBeanstalk: logger must be a function`);
     }
 
     logger.log(`Beginning AWS ElasticBeanstalk deployment for development environment "${devEnvironmentName}" ...`);
+    envVars['NODE_ENV'] = devEnvironmentName;
 
     const s3 = this.__createS3__();
     const ebs = this.__createEBS__();
 
-    const buffer = await zip.packdir(pathname);
+    const buffer = zip.pack(files);
     const timeString = new Date().toISOString();
     const sDate = timeString.split('T')[0];
     const sTime = timeString.split('T')[1].split('Z')[0].replace(/[^\d]/gi, '-');
@@ -169,7 +223,13 @@ class DeploymentManager {
             S3Bucket: this.cfg.AWS_EBS_S3_BUCKET,
             S3Key: filename
           },
-          VersionLabel: version
+          VersionLabel: version,
+          Tags: Object.keys(envVars).map(key => {
+            return {
+              Key: `SET_ENV__${key}`,
+              Value: envVars[key]
+            };
+          })
         },
         (err, response) => {
           if (err) {
@@ -218,13 +278,15 @@ class DeploymentManager {
           ApplicationName: applicationName, 
           EnvironmentName: environmentName, 
           VersionLabel: version,
-          OptionSettings: [
-            {
-              Namespace: 'aws:elasticbeanstalk:application:environment',
-              OptionName: 'NODE_ENV',
-              Value: devEnvironmentName
-            }
-          ]
+          OptionSettings: [].concat(
+            Object.keys(envVars).map(key => {
+              return {
+                Namespace: 'aws:elasticbeanstalk:application:environment',
+                OptionName: key,
+                Value: envVars[key]
+              };
+            })
+          )
         },
         (err, response) => {
           if (err) {

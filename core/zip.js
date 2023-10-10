@@ -1,4 +1,6 @@
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const AdmZip = require('adm-zip');
 const minimatch = require('minimatch');
 
@@ -48,6 +50,12 @@ const shouldIgnore = function (filename, ignoreList) {
 module.exports = {
 
   readdir (root, ignorePathname = '.deployignore') {
+    if (typeof root === 'string') {
+      root = root.replaceAll('~', os.homedir());
+    }
+    if (typeof ignorePathname === 'string') {
+      ignorePathname = ignorePathname.replaceAll('~', os.homedir());
+    }
     let files = readdir(root);
     let ignoreList = files[ignorePathname] ? files[ignorePathname].toString() : '';
     ignoreList = ignoreList
