@@ -8,7 +8,7 @@ const DEFAULT_IGNORE_LIST = [
   '.*.swp',
   '._*',
   '.DS_Store',
-  '.git',
+  '.git/',
   '.hg',
   '.npmrc',
   '.lock-wscript',
@@ -19,8 +19,7 @@ const DEFAULT_IGNORE_LIST = [
   'npm-debug.log',
   'package-lock.json',
   '.deployconfig',
-  '.gitignore',
-  '.vercel'
+  '.gitignore'
 ];
 
 const readdir = (root, dir = null, files = {}) => {
