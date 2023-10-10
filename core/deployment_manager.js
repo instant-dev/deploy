@@ -391,7 +391,7 @@ class DeploymentManager {
     }
 
     return {
-      app_url: environment.CNAME,
+      app_url: `https://${environment.CNAME}`,
       dashboard_url: `https://${this.cfg.AWS_REGION}.console.aws.amazon.com/elasticbeanstalk/home?region=${this.cfg.AWS_REGION}#/environment/dashboard?environmentId=${environment.EnvironmentId}`
     };
 
