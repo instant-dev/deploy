@@ -19,6 +19,7 @@ const DEFAULT_IGNORE_LIST = [
   'npm-debug.log',
   'package-lock.json',
   '.deployconfig',
+  '.deployconfig.*',
   '.gitignore'
 ];
 

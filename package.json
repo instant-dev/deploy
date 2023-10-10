@@ -1,6 +1,6 @@
 {
   "name": "@instant.dev/deploy",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Deploy Instant API to select providers",
   "main": "index.js",
   "scripts": {
