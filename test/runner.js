@@ -1,4 +1,3 @@
-require('dotenv').config({path: '.test.env'});
 const fs = require('fs');
 
 describe('Test Suite', function() {

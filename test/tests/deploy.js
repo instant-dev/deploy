@@ -1,4 +1,5 @@
 const { DeploymentManager } = require('../../index.js');
+const { expect } = require('chai');
 
 module.exports = () => {
 
