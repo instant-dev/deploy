@@ -152,6 +152,28 @@ class DeploymentManager {
     return new AWS.ElasticBeanstalk(ebsCfg);
   }
 
+  /**
+   * @private
+   */
+  async __uploadToS3__ (s3, params, logger, progressInterval = 5000) {
+    let loaded = 0;
+    let total = params.Body.byteLength;
+    const upload = s3.upload(params);
+    upload.on('httpUploadProgress', progress => {
+      loaded = progress.loaded;
+      total = progress.total || total;
+    });
+    const progressTimer = setInterval(() => {
+      const percent = total ? ((loaded / total) * 100).toFixed(1) : '0.0';
+      logger.log(`Upload progress: ${loaded}/${total} bytes (${percent}%) ...`);
+    }, progressInterval);
+    try {
+      return await upload.promise();
+    } finally {
+      clearInterval(progressTimer);
+    }
+  }
+
   readPackageFiles (pathname, ignorePathname) {
     if (typeof pathname === 'string') {
       pathname = pathname.replaceAll('~', os.homedir());
@@ -222,24 +244,13 @@ class DeploymentManager {
     const version = `${sDate}-${sTime}`;
 
     logger.log(`Uploading package "${filename}" (${buffer.byteLength} bytes) to S3 bucket "${this.cfg.AWS_EBS_S3_BUCKET}" ...`);
-    let s3Response = await new Promise((resolve, reject) => {
-      s3.putObject(
-        {
-          Bucket: this.cfg.AWS_EBS_S3_BUCKET,
-          Key: filename,
-          Body: buffer,
-          ACL: 'private',
-          ContentType: 'application/zip'
-        },
-        (err, response) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(response);
-          }
-        }
-      );
-    });
+    await this.__uploadToS3__(s3, {
+      Bucket: this.cfg.AWS_EBS_S3_BUCKET,
+      Key: filename,
+      Body: buffer,
+      ACL: 'private',
+      ContentType: 'application/zip'
+    }, logger);
     logger.log(`Successfully uploaded package "${filename}"!`);
 
     logger.log(`Creating ElasticBeanstalk application "${applicationName}" version "${version}" ...`);
